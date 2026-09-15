@@ -276,7 +276,7 @@ int isEqual(int x, int y) {
  *   Rating: 2
  */
 int divpwr2(int x, int n) {
-  
+  return  (x>>n) + ((~(x>>31)+1)& (!(!x)) & !(!(x&((1<<n)+ ~0))));
 }
 /* 
  * sign - return 1 if positive, 0 if zero, and -1 if negative
@@ -287,7 +287,7 @@ int divpwr2(int x, int n) {
  *  Rating: 2
  */
 int sign(int x) {
-    return 2;
+    return ((!(!x))<<31)>>31 & ((x>>31)+(x>>31)+1)  ;
 }
 /* 
  * addOK - Determine if can compute x+y without overflow
@@ -298,7 +298,8 @@ int sign(int x) {
  *   Rating: 3
  */
 int addOK(int x, int y) {
-  return 2;
+  int ans=x+y, sign=!((x^y)>>31);
+  return !(sign & ((ans^x)>>31));
 }
 /* 
  * absVal - absolute value of x
@@ -309,7 +310,7 @@ int addOK(int x, int y) {
  *   Rating: 4
  */
 int absVal(int x) {
-  return 2;
+  return ((x>>31)^x) + ~(x>>31) + 1;
 }
 /*
  * satSub - compute x - y, saturating to Tmax on positive overflow and
@@ -321,7 +322,9 @@ int absVal(int x) {
  *   Rating: 4
  */
 int satSub(int x, int y) {
-  return 2;
+  int r=x + ~y +1, overflow=((x^y)&(x^r))>>31;
+  int signX = x >> 31,tmax = ~(1 << 31),saturated = signX ^ tmax;
+  return (overflow & saturated) | (~overflow & r);
 }
 // Floating point (rating sum 16)
 /* 
@@ -336,7 +339,11 @@ int satSub(int x, int y) {
  *   Rating: 4
  */
 unsigned float_twice(unsigned uf) {
-  return 2;
+  unsigned mask=(uf>>23)& 0xff, left= uf &(~0 ^ (0xff << 23));
+  if (mask==0) return (left<<1) | (mask+(mask>=128)) | (uf>>31<<31) ;
+  else if (mask==254) return (0x7f<<24) | (0x80<<16)| (uf>>31<<31);
+  else if (mask==255) return uf;
+  else return left | ((mask+1)<<23);
 }
 /* 
  * float_f2i - Return bit-level equivalent of expression (int) f
@@ -351,7 +358,20 @@ unsigned float_twice(unsigned uf) {
  *   Rating: 4
  */
 int float_f2i(unsigned uf) {
-  return 2;
+  unsigned mask=(uf>>23)& 0xff, left=( uf &(~0 ^ (0xff << 23)))<<1>>1,sign=uf>>31,e=mask-127;
+  left=left | (1<<23);
+  if(mask <=126) return 0;
+  else if(mask <=150){ 
+    left=left>>(23-e);
+    if(sign) return ~left + 1 ;
+    else return left;
+  }
+  else if(mask <=157){
+    left=left<<(e-23);
+    if(sign) return ~left + 1 ;
+    else return left;
+  }
+  else return 1<<31;
 }
 /* 
  * float_negpwr2 - Return bit-level equivalent of the expression 2.0^-x
@@ -367,7 +387,10 @@ int float_f2i(unsigned uf) {
  *   Rating: 4
  */
 unsigned float_negpwr2(int x) {
-    return 2;
+    if(x>=150 ) return 0;
+    else if( x<= -128) return (0x7f<<24) | (0x80<<16);
+    else if ( x<=126 ) return (-x+127)<<23;
+    else  return 1<<((-x+127)+22);
 }
 /* 
  * float_greater - Return bit-level equivalent of expression x > y for
@@ -381,5 +404,21 @@ unsigned float_negpwr2(int x) {
  *   Rating: 4
  */
 unsigned float_greater(unsigned x, unsigned y) {
-  return 2;
+  unsigned e1=(x>>23)& 0xff, left1=( x &(~0 ^ (0xff << 23)))<<1>>1,sign1=x>>31;
+  unsigned e2=(y>>23)& 0xff, left2=( y &(~0 ^ (0xff << 23)))<<1>>1,sign2=y>>31;
+  if((x<<1>>1)==0)sign1=0;
+  if((y<<1>>1)==0)sign2=0;
+  if ((e1==255) && (left1 !=0)) return 0;
+  else if ((e2==255) && (left2 !=0)) return 0;
+  else {
+    if(sign1!=sign2) return sign1>sign2? 0:1;
+    else if (sign1==1){
+      if(e1==e2) return left1>=left2? 0:1;
+      else return e1>e2?0:1;
+    }
+    else{
+      if(e1==e2)return left1>left2? 1:0;
+      else return e1>e2?1:0;
+    }
+  }
 }
